@@ -1,0 +1,71 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local patch / backup files
+.patch-backup/
+*.bak
+*.bak_*
+*.backup
+*.orig
+knowflow_apply_index_hardening*.ps1
+knowflow_final_v1_hardening*.ps1
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+log/
+
+# Java / Maven
+backend/target/
+**/target/
+*.class
+
+# Node / Vite
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+.npm/
+.pnpm-store/
+coverage/
+
+# Cache / temp
+.cache/
+.tmp/
+temp/
+tmp/
+*.tmp
+
+# Docker local data
+docker-data/
+data/postgres/
+data/redis/
+data/rabbitmq/
+data/minio/
+
+# Local DB dumps
+*.sql.gz
+*.dump
+*.backup.sql
+
+# Runtime uploads
+uploads/
