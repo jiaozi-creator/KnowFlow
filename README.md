@@ -1,311 +1,596 @@
 # KnowFlow
 
-> 面向中小团队的多租户企业知识库与 RAG 智能问答平台。
+<div align="center">
 
-KnowFlow 是一个前后端分离的企业知识管理项目，围绕 **文档接入、权限控制、向量检索、RAG 问答、引用溯源、索引生命周期和组织协作** 构建。项目重点不是单纯调用大模型，而是把企业知识库中常见的权限、异步处理、检索安全和索引维护问题串成完整工程链路。
+# Enterprise AI Knowledge Assistant Platform
 
-## 核心能力
+基于 RAG 的企业智能知识库与问答平台
 
-- **多租户与组织体系**：租户、部门、成员、OWNER / ADMIN / MEMBER 角色管理。
-- **知识库 ACL**：支持 `TENANT`、`DEPARTMENT`、`MEMBER`、`PRIVATE` 四种可见范围。
-- **文档接入**：支持 PDF、DOCX、Markdown、TXT，文件存储在 MinIO。
-- **异步索引**：RabbitMQ 驱动文档解析、切片、Embedding 和 pgvector 入库。
-- **RAG 问答**：向量检索 + 权限过滤 + 引用溯源，回答严格基于检索证据。
-- **多轮对话**：对上下文追问进行 Query Rewrite，再执行检索。
-- **索引生命周期**：索引签名、过期检测、批量重建、失败恢复和真实任务进度。
-- **索引安全**：只检索当前文档版本且状态为 READY 的 Chunk。
-- **审计与完整性检查**：写操作审计、僵尸任务恢复、孤儿 Chunk / 过期索引检查。
-- **文本编码兼容**：Markdown / TXT 支持 UTF-8、UTF-16LE、UTF-16BE，并提供 GB18030 fallback。
+React + Spring Boot + PostgreSQL + pgvector + Qwen
 
-## 技术栈
+</div>
 
-| 层级 | 技术 |
-| --- | --- |
-| Frontend | React 19、TypeScript、Vite、Ant Design、React Router、TanStack Query、Zustand、PDF.js |
-| Backend | Java 21、Spring Boot 3.5、Spring MVC、Spring Security、JWT、MyBatis-Plus / MyBatis、Flyway |
-| Database | PostgreSQL 17、pgvector |
-| Middleware | Redis、RabbitMQ、MinIO |
-| AI | OpenAI-compatible Provider；Chat Model + Embedding Model |
-| Deployment | Docker、Docker Compose、Nginx-ready |
 
-## 系统架构
+## 📖 项目介绍
 
-```mermaid
-flowchart LR
-    U[Web Client] --> FE[React + TypeScript]
-    FE --> API[Spring Boot API]
+KnowFlow 是一个面向企业内部知识管理场景的智能知识库与问答平台。
 
-    API --> AUTH[JWT / RBAC / KB ACL]
-    API --> PG[(PostgreSQL + pgvector)]
-    API --> REDIS[(Redis)]
-    API --> MINIO[(MinIO)]
-    API --> MQ[(RabbitMQ)]
+系统基于 **Retrieval-Augmented Generation（RAG，检索增强生成）** 技术，将企业内部文档进行解析、切片、向量化存储，并结合大语言模型实现基于企业知识的智能问答。
 
-    MQ --> WORKER[Document Ingestion Worker]
-    WORKER --> PARSER[PDF / DOCX / MD / TXT Parser]
-    PARSER --> CHUNKER[Text Chunker]
-    CHUNKER --> EMB[Embedding Provider]
-    EMB --> PG
+相比传统关键词搜索，KnowFlow 能够理解用户自然语言问题，通过语义检索找到相关知识片段，并利用大模型生成带有来源依据的回答，降低大模型幻觉问题。
 
-    API --> RAG[RAG Service]
-    RAG --> REWRITE[Query Rewrite]
-    REWRITE --> PG
-    RAG --> LLM[Chat Provider]
-    LLM --> FE
+项目主要面向企业内部制度查询、技术文档检索、员工知识助手等应用场景。
+
+
+---
+
+## ✨ 核心功能
+
+
+### 1. 企业知识库管理
+
+支持企业内部知识资产统一管理：
+
+- 创建多个知识库
+- 上传企业文档
+- 文档状态管理
+- 知识库权限控制
+- 多租户数据隔离
+
+
+支持文档类型：
+
+- PDF
+- DOCX
+- Markdown
+- TXT
+
+
+---
+
+### 2. 文档智能处理 Pipeline
+
+
+完整处理流程：
+
+```
+Document Upload
+
+        ↓
+
+Document Parsing
+
+        ↓
+
+Text Chunking
+
+        ↓
+
+Embedding Generation
+
+        ↓
+
+Vector Storage
+
+        ↓
+
+Semantic Retrieval
 ```
 
-## 文档索引流程
 
-```text
-上传文档
-   ↓
-MinIO 保存原文件
-   ↓
-创建 document / document_version / ingestion_task
-   ↓
-RabbitMQ
-   ↓
-Parser
-   ↓
-Chunker
-   ↓
-Embedding
-   ↓
-事务性替换当前版本 Chunk
-   ↓
-pgvector
-   ↓
-READY + index_signature + indexed_at
+系统通过异步任务处理文档解析和向量化过程，避免大文件处理阻塞主业务。
+
+
+---
+
+### 3. RAG 智能问答
+
+
+用户输入问题后：
+
 ```
-
-重新索引时会先完成全部新 Embedding，再在数据库事务中替换旧 Chunk。若新索引失败，不会提前破坏上一份成功索引。
-
-## 权限模型
-
-知识库支持四种可见范围：
-
-| Visibility | 说明 |
-| --- | --- |
-| `TENANT` | 当前租户所有成员可访问 |
-| `DEPARTMENT` | 仅指定部门可访问 |
-| `MEMBER` | 仅指定成员可访问 |
-| `PRIVATE` | 仅创建者可访问 |
-
-权限校验不仅存在于前端菜单，还会进入后端知识库查询和向量检索 SQL，避免通过伪造 Knowledge Base ID 绕过权限。
-
-## RAG 流程
-
-```text
 用户问题
+
    ↓
-读取最近会话
+
+问题 Embedding
+
    ↓
-Query Rewrite
+
+pgvector 相似度检索
+
    ↓
+
+召回相关文档片段
+
+   ↓
+
+构建 RAG Context
+
+   ↓
+
+调用 Qwen 大模型
+
+   ↓
+
+生成回答并展示引用
+```
+
+
+支持：
+
+- 多知识库选择
+- 语义搜索
+- 文档片段引用
+- 相似度展示
+- 历史会话管理
+
+
+示例：
+
+用户：
+
+```
+财务奖金什么时候发放？
+```
+
+
+系统：
+
+```
+财务奖金发放时间为每年12月20日。
+
+引用来源：
+
+财务奖金制度.md
+
+相似度：0.84
+```
+
+
+---
+
+### 4. 企业权限管理
+
+
+支持企业组织结构：
+
+```
+Tenant
+
+  |
+
+Organization
+
+  |
+
+Department
+
+  |
+
+User
+```
+
+
+实现：
+
+- JWT 用户认证
+- 租户隔离
+- 用户权限控制
+- 知识库 ACL 权限管理
+
+
+---
+
+# 🏗 系统架构
+
+
+```
+                         User
+
+                          |
+
+                          |
+
+              React + TypeScript
+
+                          |
+
+                          |
+
+                Spring Boot API
+
+                          |
+
+        +-----------------+----------------+
+
+        |                                  |
+
+ Authentication                     Chat Service
+
+        |                                  |
+
+ JWT + ACL                         RAG Pipeline
+
+                                           |
+
+                          +----------------+
+
+                          |
+
+              +-----------+-----------+
+
+              |                       |
+
+        Vector Search              LLM
+
+              |                       |
+
+          pgvector                 Qwen
+
+
+Document Processing:
+
+Upload
+
+  |
+
+RabbitMQ
+
+  |
+
+Worker
+
+  |
+
+Parser
+
+  |
+
+Chunk
+
+  |
+
 Embedding
-   ↓
-租户 + ACL + READY + currentVersion 过滤
-   ↓
-pgvector Top-K
-   ↓
-构造证据上下文
-   ↓
-LLM 生成回答
-   ↓
-Citation 归一化
-   ↓
-返回回答 + 引用片段
+
+  |
+
+Vector Database
+
 ```
 
-当检索不到可靠证据时，系统不会让模型自由补全企业内部事实。
 
-## 项目结构
+---
 
-```text
-knowflow/
-├─ backend/                   # Spring Boot API
-│  ├─ src/main/java/com/knowflow/
-│  │  ├─ ai/                  # Chat / Embedding Provider
-│  │  ├─ auth/                # JWT 登录鉴权
-│  │  ├─ document/            # 上传、解析、索引、任务恢复
-│  │  ├─ knowledge/           # Knowledge Base 与 ACL
-│  │  ├─ organization/        # 部门与成员
-│  │  ├─ retrieval/           # pgvector 检索
-│  │  ├─ audit/               # 审计日志
-│  │  └─ admin/               # 系统完整性检查
-│  └─ src/main/resources/
-│     └─ db/migration/        # Flyway V1 ~ V7
-├─ frontend/                  # React + TypeScript
-├─ samples/                   # 演示文档
-├─ docker-compose.yml
-├─ .env.example
-└─ README.md
+# 🛠 技术栈
+
+
+## 前端
+
+| 技术 | 说明 |
+| --- | --- |
+| React | 前端框架 |
+| TypeScript | 类型安全 |
+| Vite | 构建工具 |
+| Ant Design | UI 组件库 |
+| Zustand | 状态管理 |
+| TanStack Query | 服务端状态管理 |
+
+
+---
+
+## 后端
+
+| 技术 | 说明 |
+| --- | --- |
+| Java 21 | 后端开发语言 |
+| Spring Boot 3 | 后端框架 |
+| Spring Security | 安全认证 |
+| JWT | 用户认证 |
+| MyBatis-Plus | ORM 框架 |
+
+
+---
+
+## AI 与检索
+
+| 技术 | 说明 |
+| --- | --- |
+| Qwen | 大语言模型 |
+| Embedding Model | 文本向量化 |
+| RAG | 检索增强生成 |
+| pgvector | 向量数据库扩展 |
+
+
+---
+
+## 基础设施
+
+| 技术 | 说明 |
+| --- | --- |
+| PostgreSQL | 业务数据库 |
+| Redis | 缓存 |
+| RabbitMQ | 消息队列 |
+| MinIO | 对象存储 |
+| Docker Compose | 容器编排 |
+
+
+---
+
+# 📂 项目结构
+
+
+```
+KnowFlow
+
+├── backend
+│
+│   ├── src/main/java/com/knowflow
+│   │
+│   ├── auth              # 用户认证
+│   ├── chat              # 对话服务
+│   ├── document          # 文档处理
+│   ├── retrieval         # 向量检索
+│   ├── ai                # AI Provider
+│   └── security          # 权限控制
+│
+├── frontend
+│
+│   ├── src
+│   ├── pages
+│   └── components
+│
+├── docker-compose.yml
+│
+├── README.md
+
 ```
 
-## 本地启动
 
-### 1. 环境要求
+---
 
-建议安装：
+# 🚀 快速启动
 
-- Java 21（仅本地直接运行后端时需要）
+
+## 环境要求
+
+
+- Java 21+
 - Node.js 20+
-- Docker Desktop
-- Git
+- Maven 3.9+
+- Docker
 
-如果全部通过 Docker Compose 启动，核心依赖由容器提供。
 
-### 2. 配置环境变量
+---
 
-复制示例配置：
+## 1. 启动基础服务
+
+
+项目根目录执行：
+
 
 ```bash
-cp .env.example .env
+docker compose up -d
 ```
 
-Windows PowerShell：
 
-```powershell
-Copy-Item .env.example .env
+启动：
+
+| 服务 | 端口 |
+| --- | --- |
+| PostgreSQL | 5432 |
+| Redis | 6379 |
+| RabbitMQ | 5672 |
+| RabbitMQ Management | 15672 |
+| MinIO | 9000 |
+| Backend | 8080 |
+| Frontend | 3000 |
+
+
+---
+
+## 2. 启动后端
+
+
+进入 backend：
+
+
+```bash
+cd backend
 ```
 
-根据自己的模型服务填写 `.env`。**不要把真实 API Key 提交到 Git。**
 
-### 3. 启动
+启动：
 
-本项目当前 Windows 开发环境使用：
 
-```powershell
-docker-compose up -d --build
+```bash
+mvn spring-boot:run
 ```
 
-查看状态：
 
-```powershell
-docker-compose ps
+后端地址：
+
 ```
-
-后端健康检查：
-
-```powershell
-Invoke-RestMethod "http://localhost:8080/actuator/health"
-```
-
-前端默认访问：
-
-```text
-http://localhost:3000
-```
-
-后端默认访问：
-
-```text
 http://localhost:8080
 ```
 
-## 常用管理接口
 
-| Method | Endpoint | 用途 |
-| --- | --- | --- |
-| GET | `/actuator/health` | 后端健康检查 |
-| GET | `/api/admin/system-check` | OWNER / ADMIN 系统完整性检查 |
-| GET | `/api/audit-logs?limit=100` | OWNER / ADMIN 查看审计日志 |
-| POST | `/api/documents/{id}/reindex` | 单文档重新索引 |
-| GET | `/api/knowledge-bases/{id}/documents/index-status` | 索引状态统计 |
-| POST | `/api/knowledge-bases/{id}/documents/repair-indexes` | 批量修复过期/失败索引 |
+---
 
-## 索引版本管理
+## 3. 启动前端
 
-当前索引签名由以下因素组成：
 
-```text
-parser-version | chunker-version | embedding-model | embedding-dimensions
+进入 frontend：
+
+
+```bash
+cd frontend
 ```
 
-例如：
 
-```text
-parser-v2|chunker-v1|text-embedding-v4|1024
+安装依赖：
+
+```bash
+npm install
 ```
 
-Parser、Chunker、Embedding 模型或向量维度发生变化时，系统会将旧索引标记为 `NEEDS_REINDEX`，而不是每次部署都无条件重新向量化。
 
-## 数据一致性检查
+启动：
 
-管理员可以调用：
-
-```http
-GET /api/admin/system-check
+```bash
+npm run dev
 ```
 
-理想状态：
 
-```json
-{
-  "orphanChunks": 0,
-  "nonCurrentChunks": 0,
-  "readyDocumentsWithoutChunks": 0,
-  "activeIngestionTasks": 0,
-  "failedDocuments": 0,
-  "needsReindexDocuments": 0
-}
+访问：
+
+```
+http://localhost:5173
 ```
 
-## 安全说明
 
-仓库不应包含：
+---
 
-- `.env`
-- API Key
-- JWT / Refresh Token
-- 数据库生产密码
-- MinIO 生产凭据
-- IDE 本地配置
-- `node_modules`
-- Maven `target`
-- 前端 `dist`
-- 临时补丁和备份目录
+# 🔥 项目亮点
 
-首次公开仓库前建议再次执行：
 
-```powershell
-git status
-git diff --cached
+## 1. 完整 RAG Pipeline
+
+
+实现企业知识库完整链路：
+
+
+```
+Document
+
+ ↓
+
+Chunk
+
+ ↓
+
+Embedding
+
+ ↓
+
+Vector Search
+
+ ↓
+
+Context Construction
+
+ ↓
+
+LLM Generation
+
+ ↓
+
+Citation
 ```
 
-并确认 `.env` 没有被暂存。
 
-## 已完成的工程化处理
+---
 
-- JWT 认证与 RBAC
-- Knowledge Base 细粒度 ACL
-- RAG 检索层权限过滤
-- pgvector 向量检索
-- 多轮 Query Rewrite
-- Citation 引用归一化
-- RabbitMQ 异步文档索引
-- MinIO 文件存储
-- 文档索引签名
-- 批量索引修复
-- 索引失败保护与僵尸任务恢复
-- UTF-16 / UTF-8 文本编码兼容
-- 写操作审计
-- 管理员数据完整性检查
-- Flyway 数据库迁移
+## 2. 向量数据库设计
 
-## 后续规划
 
-V1 之后可以继续扩展：
+使用 PostgreSQL + pgvector 保存文档向量。
 
-- 文档历史版本与回滚 UI
-- OCR 扫描版 PDF
-- 混合检索（BM25 + Vector）
-- Reranker
-- 知识库级检索参数配置
-- CI/CD 与自动化测试
-- Prometheus / Grafana 监控
-- 对象存储生命周期策略
 
-## License
+优势：
 
-本项目当前未指定开源许可证。公开代码前可根据实际用途选择合适的 License。
+- 与业务数据库统一
+- 支持 SQL 查询
+- 降低系统复杂度
+- 适合企业内部知识场景
+
+
+---
+
+## 3. 异步文档处理
+
+
+通过 RabbitMQ 解耦文档处理流程。
+
+
+```
+Upload Service
+
+      |
+
+ RabbitMQ
+
+      |
+
+Document Worker
+
+      |
+
+Embedding Pipeline
+
+```
+
+
+提高系统稳定性和扩展能力。
+
+
+---
+
+## 4. AI Provider 抽象设计
+
+
+通过统一接口封装模型调用：
+
+```
+ChatModelProvider
+
+        |
+
+        +---- Mock Provider
+
+        |
+
+        +---- OpenAI Compatible Provider
+
+```
+
+
+支持后续快速切换不同大模型服务。
+
+
+---
+
+# 📸 系统截图
+
+
+## 登录页面
+
+
+## 工作台
+
+
+## 知识库管理
+
+
+## RAG 智能问答
+
+
+---
+
+# 📌 后续优化方向
+
+
+- Streaming Token 输出
+- Hybrid Search（BM25 + Vector）
+- Reranker 重排序模型
+- Agent 工作流
+- 知识图谱增强
+- RAG 自动评测体系
+
+
+---
+
+# 📄 License
+
+
+MIT License
