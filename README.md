@@ -346,6 +346,77 @@ KnowFlow
 
 ```
 
+## 功能展示
+
+### 1. 用户认证
+
+支持企业用户注册、登录以及基于 JWT 的身份认证。
+
+![登录页面](docs/images/login.png)
+
+
+### 2. 企业工作台
+
+提供企业知识库概览、检索模式、租户隔离状态等核心信息展示。
+
+![工作台](docs/images/dashboard.png)
+
+
+### 3. 知识库管理
+
+支持创建多个企业知识库，并针对不同知识库配置访问范围。
+
+![知识库管理](docs/images/knowledge-base.png)
+
+
+### 4. 文档解析与向量化
+
+支持 PDF、DOCX、Markdown、TXT 等文档上传。
+
+系统通过异步任务完成：
+
+- 文档解析
+- 文本切片
+- Embedding 向量化
+- 向量索引构建
+
+
+文档进入处理流程：
+
+![文档处理中](docs/images/document-processing.png)
+
+
+完成解析和向量化后：
+
+![文档索引完成](docs/images/document-ready.png)
+
+
+### 5. RAG 智能问答
+
+基于向量检索召回相关知识片段，并结合大语言模型生成回答。
+
+支持：
+
+- 多知识库选择
+- 引用来源展示
+- 基于企业文档的精准问答
+
+
+![RAG智能问答](docs/images/rag-chat.png)
+
+
+### 6. 企业组织管理
+
+支持企业部门结构维护，用于后续知识库权限控制。
+
+![部门管理](docs/images/department.png)
+
+
+### 7. 成员权限管理
+
+支持企业成员管理以及角色控制。
+
+![成员管理](docs/images/members.png)
 
 ---
 
